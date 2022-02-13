@@ -56,18 +56,25 @@ pub fn animate_sprite_system(
         &mut AnimationTimer,
         &mut TextureAtlasSprite,
         &Handle<TextureAtlas>,
+        &bomb::BombState,
+        &mut AnimationTick,
+        &AnimationInfo<bomb::BombState>,
     ), With<Play>>,
 ) {
-    for (mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
+    for (mut timer, mut sprite, texture_atlas_handle, bomb_state, mut animation_tick, animation_info) in query.iter_mut() {
+        let timer: &mut AnimationTimer = &mut timer;
+        let sprite: &mut TextureAtlasSprite = &mut sprite;
+        let texture_atlas_handle: &Handle<TextureAtlas> = texture_atlas_handle;
+        let animation_tick: &mut AnimationTick = &mut animation_tick;
+        let animation_info: &AnimationInfo<bomb::BombState> = animation_info;
+
         timer.0.tick(time.delta());
         if timer.0.finished() {
-            let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-            sprite.index = ((sprite.index as usize + 1) % 3) as usize;
-            // sprite.index = if must_animate.0 {
-            //     ((sprite.index as usize + 1) % 3) as usize
-            // } else {
-            //     0
-            // };
+            // texture_atlas_handle.
+            let (_layer, animations) = animation_info.0.get(bomb_state).unwrap().first().unwrap();
+            let length = animations.len();
+            let next_frame = ((sprite.index as usize + 1) % length) as usize;
+            sprite.index = next_frame;
         }
     }
 }
@@ -112,7 +119,7 @@ pub mod bomb {
         pub animation_tick: AnimationTick,
         pub animation_timer: AnimationTimer,
         pub bomb_state: BombState,
-        pub sprites: SpriteAtlas<BombState>,
+        pub sprites: AnimationInfo<BombState>,
     }
 
     #[derive(Component, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq, EnumString)]
@@ -133,7 +140,7 @@ pub mod bomb {
 
 use bevy::utils::HashMap as BevyHashMap;
 #[derive(Component, Debug, Default)]
-pub struct SpriteAtlas<T>(BevyHashMap<T, Vec<(aseprite::LayerName, Vec<aseprite::FrameInfo>)>>);
+pub struct AnimationInfo<T>(BevyHashMap<T, Vec<(aseprite::LayerName, Vec<aseprite::FrameInfo>)>>);
 
 #[derive(Component, Default)]
 pub struct AnimationTick(pub u32);
@@ -223,7 +230,7 @@ pub mod aseprite {
     #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
     pub struct LayerName(String);
 
-    impl<AnimationName> From<SpriteInfo<AnimationName>> for crate::SpriteAtlas<AnimationName>
+    impl<AnimationName> From<SpriteInfo<AnimationName>> for crate::AnimationInfo<AnimationName>
     where
         AnimationName: std::cmp::Eq + Hash + Clone + FromStr,
     {

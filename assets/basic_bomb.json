@@ -28,7 +28,7 @@
    },
    {
     "filename": "FUSE-Base-3",
-    "frame": { "x": 0, "y": 128, "w": 64, "h": 128 },
+    "frame": { "x": 192, "y": 0, "w": 64, "h": 128 },
     "rotated": false,
     "trimmed": false,
     "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 128 },
@@ -37,7 +37,7 @@
    },
    {
     "filename": "FUSE-Fuse-0",
-    "frame": { "x": 64, "y": 128, "w": 64, "h": 128 },
+    "frame": { "x": 0, "y": 128, "w": 64, "h": 128 },
     "rotated": false,
     "trimmed": false,
     "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 128 },
@@ -46,7 +46,7 @@
    },
    {
     "filename": "FUSE-Fuse-1",
-    "frame": { "x": 128, "y": 128, "w": 64, "h": 128 },
+    "frame": { "x": 64, "y": 128, "w": 64, "h": 128 },
     "rotated": false,
     "trimmed": false,
     "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 128 },
@@ -55,7 +55,7 @@
    },
    {
     "filename": "FUSE-Fuse-2",
-    "frame": { "x": 0, "y": 256, "w": 64, "h": 128 },
+    "frame": { "x": 128, "y": 128, "w": 64, "h": 128 },
     "rotated": false,
     "trimmed": false,
     "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 128 },
@@ -64,7 +64,7 @@
    },
    {
     "filename": "FUSE-Fuse-3",
-    "frame": { "x": 64, "y": 256, "w": 64, "h": 128 },
+    "frame": { "x": 192, "y": 128, "w": 64, "h": 128 },
     "rotated": false,
     "trimmed": false,
     "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 128 },
@@ -86,7 +86,7 @@
   "version": "1.2.33-x64",
   "image": "basic_bomb.png",
   "format": "RGBA8888",
-  "size": { "w": 192, "h": 384 },
+  "size": { "w": 256, "h": 256 },
   "scale": "1",
   "frameTags": [
    { "name": "FUSE", "from": 0, "to": 3, "direction": "forward" },
