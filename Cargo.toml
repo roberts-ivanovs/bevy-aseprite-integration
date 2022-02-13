@@ -1,0 +1,15 @@
+[package]
+name = "aseprite-normalmaps-bevy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = "0.6.0"
+asefile = "0.3.2"
+benimator = "2.0.1"
+serde = {version = "1", features=["serde_derive"]}
+serde_json = "1"
+strum_macros = "0.23.1"
+strum = "0.23.0"
