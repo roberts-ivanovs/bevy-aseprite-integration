@@ -27,39 +27,43 @@ fn spawn(
     let texture_handle = asset_server.load(&sprite.meta.image);
     let dimensions = Vec2::new(tile_size.w as f32, tile_size.h as f32);
 
-
     let layer_info = sprite.extract_layer_info();
-    commands.spawn_bundle(bomb::BombBundle {
-        bomb_state: bomb::BombState::Fuse,
-        ..Default::default()
-    }).with_children(|builder| {
-        for (key, val) in layer_info {
-            // Each layer gets its own texture atlas to iterate through!
-            let mut texture_atlas = TextureAtlas::new_empty(texture_handle.clone(), dimensions);
-            for (_bomb_state, (_tags, frames)) in (val.0).iter() {
-                for frame in frames {
-                    let rect = bevy::sprite::Rect {
-                        min: Vec2::new(frame.frame.x as f32, frame.frame.y as f32),
-                        max: Vec2::new(
-                            (frame.frame.x + frame.frame.w) as f32,
-                            (frame.frame.y + frame.frame.h) as f32,
-                        ),
-                    };
-                    texture_atlas.add_texture(rect);
+    commands
+        .spawn_bundle(bomb::BombBundle {
+            bomb_state: bomb::BombState::Fuse,
+            ..Default::default()
+        })
+        .with_children(|builder| {
+            for (key, val) in layer_info {
+                info!("Spawning layer {key:?}");
+                // Each layer gets its own texture atlas to iterate through!
+                let mut texture_atlas = TextureAtlas::new_empty(texture_handle.clone(), dimensions);
+                for (_bomb_state, (_tags, frames)) in (val.0).iter() {
+                    for frame in frames {
+                        let rect = bevy::sprite::Rect {
+                            min: Vec2::new(frame.frame.x as f32, frame.frame.y as f32),
+                            max: Vec2::new(
+                                (frame.frame.x + frame.frame.w) as f32,
+                                (frame.frame.y + frame.frame.h) as f32,
+                            ),
+                        };
+                        texture_atlas.add_texture(rect);
+                    }
                 }
+                let texture_atlas = textures.add(texture_atlas);
+                builder
+                    .spawn_bundle(SpriteSheetBundle {
+                        texture_atlas,
+                        transform: Transform::from_scale(Vec3::splat(30.0)),
+                        ..Default::default()
+                    })
+                    .insert_bundle(bomb::LayerBundle {
+                        layer_name: key,
+                        sprites: val,
+                    })
+                    .insert(Play);
             }
-            let texture_atlas = textures.add(texture_atlas);
-            builder
-                .spawn_bundle(SpriteSheetBundle {
-                    texture_atlas,
-                    ..Default::default()
-                })
-                .insert_bundle(bomb::LayerBundle {
-                    layer_name: key,
-                    sprites: val,
-                });
-        }
-    });
+        });
 }
 
 pub fn animate_sprite_system(
@@ -74,38 +78,25 @@ pub fn animate_sprite_system(
     >,
 ) {
     for (bomb_state, children, mut timer) in query_bomb.iter_mut() {
-        debug!("bomb state {bomb_state:?}");
         let children: &Children = children;
         let timer: &mut AnimationTimer = &mut timer;
-        let mut new_timer: Option<AnimationTimer> = None;
+        timer.0.tick(time.delta());
         for &child in children.iter() {
-            debug!("Looking up child {child:?}");
             if let Ok((mut sprite, animation_info)) = query_layers.get_mut(child) {
-                debug!("Found");
                 let sprite: &mut TextureAtlasSprite = &mut sprite;
                 let animation_info: &AnimationLayerInfo<bomb::BombState> = animation_info;
 
-                timer.0.tick(time.delta());
                 if timer.0.finished() {
                     let (tag, frames) = animation_info.0.get(bomb_state).unwrap();
-                    let length = tag.from + tag.to;
+                    let length = tag.from + tag.to + 1;
                     let next_frame = ((sprite.index as usize + 1) % length) as usize;
                     sprite.index = next_frame;
 
-                    if new_timer.is_none() {
-                        let next_timer = Timer::from_seconds(
-                            frames.get(next_frame).unwrap().duration as f32 / 1000_f32,
-                            true,
-                        );
-                        new_timer = Some(AnimationTimer(next_timer));
-                    }
-                } else {
-                    debug!("Timer not finished");
                 }
             }
-        }
-        if let Some(new_timer) = new_timer {
-            *timer = new_timer;
+
+            // TODO hold the time delta frame info for the query_bomb object
+            //      Dynamically adjust the time delta there as needed.
         }
     }
 }
