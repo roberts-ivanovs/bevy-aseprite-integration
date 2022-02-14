@@ -12,7 +12,7 @@ fn main() {
         .run();
 }
 
-const BOMB_METADATA: &'static str = include_str!("../assets/basic_bomb.json");
+const BOMB_METADATA: &str = include_str!("../assets/basic_bomb.json");
 
 fn spawn(
     mut commands: Commands,
@@ -24,91 +24,111 @@ fn spawn(
     let sprite: aseprite::SpriteInfo<bomb::BombState> =
         serde_json::from_str(BOMB_METADATA).unwrap();
     let tile_size = &sprite.frames.iter().next().unwrap().source_size;
+    let texture_handle = asset_server.load(&sprite.meta.image);
+    let dimensions = Vec2::new(tile_size.w as f32, tile_size.h as f32);
 
-    let columns = sprite.meta.frame_tags.get(0).unwrap().to + 1;
-    println!("{:?}", sprite);
-    let texture_atlas = TextureAtlas::from_grid(
-        asset_server.load(&sprite.meta.image),
-        Vec2::new(tile_size.w as f32, tile_size.h as f32),
-        columns,
-        sprite.meta.layers.len(),
-    );
-    let texture = textures.add(texture_atlas);
 
-    let bomb_sprite_data = sprite.into();
-    let mut entity = commands
-        .spawn_bundle(SpriteSheetBundle {
-            texture_atlas: texture,
-            transform: Transform::from_scale(Vec3::splat(1.0)),
-            ..Default::default()
-        })
-        .insert_bundle(bomb::BombBundle {
-            sprites: bomb_sprite_data,
-            bomb_state: bomb::BombState::Fuse,
-            ..Default::default()
-        }).insert(Play);
+    let layer_info = sprite.extract_layer_info();
+    commands.spawn_bundle(bomb::BombBundle {
+        bomb_state: bomb::BombState::Fuse,
+        ..Default::default()
+    }).with_children(|builder| {
+        for (key, val) in layer_info {
+            // Each layer gets its own texture atlas to iterate through!
+            let mut texture_atlas = TextureAtlas::new_empty(texture_handle.clone(), dimensions);
+            for (_bomb_state, (_tags, frames)) in (val.0).iter() {
+                for frame in frames {
+                    let rect = bevy::sprite::Rect {
+                        min: Vec2::new(frame.frame.x as f32, frame.frame.y as f32),
+                        max: Vec2::new(
+                            (frame.frame.x + frame.frame.w) as f32,
+                            (frame.frame.y + frame.frame.h) as f32,
+                        ),
+                    };
+                    texture_atlas.add_texture(rect);
+                }
+            }
+            let texture_atlas = textures.add(texture_atlas);
+            builder
+                .spawn_bundle(SpriteSheetBundle {
+                    texture_atlas,
+                    ..Default::default()
+                })
+                .insert_bundle(bomb::LayerBundle {
+                    layer_name: key,
+                    sprites: val,
+                });
+        }
+    });
 }
 
 pub fn animate_sprite_system(
     time: Res<Time>,
-    texture_atlases: Res<Assets<TextureAtlas>>,
-    mut query: Query<(
-        &mut AnimationTimer,
-        &mut TextureAtlasSprite,
-        &Handle<TextureAtlas>,
-        &bomb::BombState,
-        &mut AnimationTick,
-        &AnimationInfo<bomb::BombState>,
-    ), With<Play>>,
+    mut query_bomb: Query<(&bomb::BombState, &Children, &mut AnimationTimer)>,
+    mut query_layers: Query<
+        (
+            &mut TextureAtlasSprite,
+            &AnimationLayerInfo<bomb::BombState>,
+        ),
+        With<Play>,
+    >,
 ) {
-    for (mut timer, mut sprite, texture_atlas_handle, bomb_state, mut animation_tick, animation_info) in query.iter_mut() {
+    for (bomb_state, children, mut timer) in query_bomb.iter_mut() {
+        debug!("bomb state {bomb_state:?}");
+        let children: &Children = children;
         let timer: &mut AnimationTimer = &mut timer;
-        let sprite: &mut TextureAtlasSprite = &mut sprite;
-        let texture_atlas_handle: &Handle<TextureAtlas> = texture_atlas_handle;
-        let animation_tick: &mut AnimationTick = &mut animation_tick;
-        let animation_info: &AnimationInfo<bomb::BombState> = animation_info;
+        let mut new_timer: Option<AnimationTimer> = None;
+        for &child in children.iter() {
+            debug!("Looking up child {child:?}");
+            if let Ok((mut sprite, animation_info)) = query_layers.get_mut(child) {
+                debug!("Found");
+                let sprite: &mut TextureAtlasSprite = &mut sprite;
+                let animation_info: &AnimationLayerInfo<bomb::BombState> = animation_info;
 
-        timer.0.tick(time.delta());
-        if timer.0.finished() {
-            // texture_atlas_handle.
-            let (_layer, animations) = animation_info.0.get(bomb_state).unwrap().first().unwrap();
-            let length = animations.len();
-            let next_frame = ((sprite.index as usize + 1) % length) as usize;
-            sprite.index = next_frame;
+                timer.0.tick(time.delta());
+                if timer.0.finished() {
+                    let (tag, frames) = animation_info.0.get(bomb_state).unwrap();
+                    let length = tag.from + tag.to;
+                    let next_frame = ((sprite.index as usize + 1) % length) as usize;
+                    sprite.index = next_frame;
+
+                    if new_timer.is_none() {
+                        let next_timer = Timer::from_seconds(
+                            frames.get(next_frame).unwrap().duration as f32 / 1000_f32,
+                            true,
+                        );
+                        new_timer = Some(AnimationTimer(next_timer));
+                    }
+                } else {
+                    debug!("Timer not finished");
+                }
+            }
+        }
+        if let Some(new_timer) = new_timer {
+            *timer = new_timer;
         }
     }
 }
 
-
-// fn animate(
-//     time: Res<Time>,
-//     mut query: Query<(
-//         &mut AnimationTimer,
-//         &mut TextureAtlasSprite,
-//         &bomb::BombState,
-//         &mut AnimationTick,
-//         &SpriteAtlas<bomb::BombState>,
-//     )>,
-//     anim_handles: Res<AnimationHandles>,
-//     anim_data_assets: Res<Assets<AnimationData>>,
-// ) {
-
-//     for (mut timer, mut sprite, texture_atlas_handle, must_animate) in query.iter_mut() {
-//         timer.0.tick(time.delta());
-//         if timer.0.finished() {
-//             let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-//             sprite.index = if must_animate.0 {
-//                 ((sprite.index as usize + 1) % texture_atlas.textures.len()) as usize
-//             } else {
-//                 0
-//             };
-//         }
-//     }
-// }
-
-
 #[derive(Component)]
 pub struct Play;
+
+#[derive(Component)]
+pub struct Layer;
+
+use bevy::utils::HashMap as BevyHashMap;
+
+#[derive(Component, Debug, Default)]
+pub struct AnimationLayerInfo<T>(BevyHashMap<T, (aseprite::TagInfo<T>, Vec<aseprite::FrameInfo>)>);
+
+#[derive(Component)]
+pub struct AnimationTimer(pub Timer);
+
+impl Default for AnimationTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(0.1, true))
+    }
+}
 
 pub mod bomb {
     use super::*;
@@ -116,10 +136,14 @@ pub mod bomb {
 
     #[derive(Bundle, Default)]
     pub struct BombBundle {
-        pub animation_tick: AnimationTick,
-        pub animation_timer: AnimationTimer,
         pub bomb_state: BombState,
-        pub sprites: AnimationInfo<BombState>,
+        pub animation_timer: AnimationTimer,
+    }
+
+    #[derive(Bundle, Default)]
+    pub struct LayerBundle {
+        pub layer_name: aseprite::LayerName,
+        pub sprites: AnimationLayerInfo<BombState>,
     }
 
     #[derive(Component, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq, EnumString)]
@@ -131,6 +155,7 @@ pub mod bomb {
         #[serde(rename = "FUSE")]
         Fuse,
     }
+
     impl Default for BombState {
         fn default() -> Self {
             BombState::Idle
@@ -138,28 +163,17 @@ pub mod bomb {
     }
 }
 
-use bevy::utils::HashMap as BevyHashMap;
-#[derive(Component, Debug, Default)]
-pub struct AnimationInfo<T>(BevyHashMap<T, Vec<(aseprite::LayerName, Vec<aseprite::FrameInfo>)>>);
-
-#[derive(Component, Default)]
-pub struct AnimationTick(pub u32);
-
-#[derive(Component)]
-pub struct AnimationTimer(pub Timer);
-
-impl Default for AnimationTimer {
-    fn default() -> Self {
-        Self(Timer::from_seconds(0.1, true))
-    }
-}
+// use bevy::utils::HashMap as BevyHashMap;
+// #[derive(Component, Debug, Default)]
+// pub struct AnimationInfo<T>(BevyHashMap<T, Vec<(aseprite::LayerName, Vec<aseprite::FrameInfo>)>>);
 
 pub mod aseprite {
-    use bevy::utils::HashMap as BevyHashMap;
-    use strum_macros::EnumString;
+    use bevy::{prelude::Component, utils::HashMap as BevyHashMap};
     use std::{collections::HashMap, hash::Hash, str::FromStr};
 
     use serde::{de::DeserializeOwned, Deserialize};
+
+    use crate::AnimationLayerInfo;
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
@@ -218,7 +232,7 @@ pub mod aseprite {
         pub blend_mode: String,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]
     pub struct TagInfo<AnimationName> {
         pub name: AnimationName,
@@ -227,47 +241,62 @@ pub mod aseprite {
         pub direction: String,
     }
 
-    #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
-    pub struct LayerName(String);
+    #[derive(Component, Default, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
+    pub struct LayerName(pub String);
 
-    impl<AnimationName> From<SpriteInfo<AnimationName>> for crate::AnimationInfo<AnimationName>
+    impl<AnimationName> SpriteInfo<AnimationName>
     where
         AnimationName: std::cmp::Eq + Hash + Clone + FromStr,
     {
-        fn from(item: SpriteInfo<AnimationName>) -> Self {
-            let frames = item.frames.into_iter().fold::<BevyHashMap<
-                AnimationName,
-                Vec<(LayerName, Vec<FrameInfo>)>,
+        pub fn extract_layer_info(
+            self,
+        ) -> BevyHashMap<LayerName, AnimationLayerInfo<AnimationName>> {
+            let frames = self.frames.into_iter().fold::<BevyHashMap<
+                LayerName,
+                AnimationLayerInfo<AnimationName>,
             >, _>(
                 BevyHashMap::default(),
                 |mut acc, frame| {
                     let mut split = frame.filename.split("-");
-                    let animation_name = split.next().unwrap();
+                    let animation_name = split.next().expect("Could not parse animation name");
                     println!("{animation_name:?}");
                     let animation_name = AnimationName::from_str(&animation_name);
-                    let animation_name  = animation_name.map_err(|_| "Invalid animation name").unwrap();
+                    let animation_name = animation_name
+                        .map_err(|_| "Invalid animation name")
+                        .unwrap();
 
-                    let layer = split.next().unwrap().to_string();
+                    let layer = split
+                        .next()
+                        .expect("Could not parse layer info")
+                        .to_string();
                     let layer = LayerName(layer);
-                    let frame_num = split.next().unwrap();
+                    let frame_num = split.next().expect("Could not parse frame number");
 
-                    let animation_map = if let Some(animation_map) = acc.get_mut(&animation_name) {
+                    let animation_map = if let Some(animation_map) = acc.get_mut(&layer) {
                         animation_map
                     } else {
-                        let animation_map = vec![];
-                        acc.insert(animation_name.clone(), animation_map);
-                        acc.get_mut(&animation_name).unwrap()
+                        let animation_map = AnimationLayerInfo(BevyHashMap::default());
+                        acc.insert(layer.clone(), animation_map);
+                        acc.get_mut(&layer).unwrap()
                     };
 
-                    if let Some((_, frames)) = animation_map.iter_mut().find(|e| e.0 == layer) {
+                    if let Some((_tag, frames)) = animation_map.0.get_mut(&animation_name) {
                         frames.push(frame);
                     } else {
-                        animation_map.push((layer, vec![frame]))
+                        let tag = self
+                            .meta
+                            .frame_tags
+                            .iter()
+                            .find(|e| e.name == animation_name)
+                            .expect("The meta tags do not include a layer specified in frames!");
+                        animation_map
+                            .0
+                            .insert(animation_name, (tag.clone(), vec![frame]));
                     }
                     acc
                 },
             );
-            Self(frames)
+            return frames;
         }
     }
 }
